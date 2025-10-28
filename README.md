@@ -1,0 +1,2 @@
+<h1>Music Recommendation System </h1><br>
+This project builds a music recommendation system that analyzes and compares songs based on their audio features. Using Librosa, it extracts features such as MFCCs, chroma, and spectral contrast from audio files. These features are stored in a dataset and used to recommend similar tracks. The system helps users discover new music based on sound similarity rather than just metadata.
