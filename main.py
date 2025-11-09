@@ -1,71 +1,145 @@
-import librosa  # type: ignore
-import numpy as np
-import pandas as pd # type: ignore
+from fastapi import FastAPI, File, UploadFile, HTTPException  #type: ignore
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, validator  #type: ignore
+import numpy as np   #type: ignore
+import pandas as pd  #type: ignore
+import librosa   #type: ignore
+import pickle
 import os
-from glob import glob
-from multiprocessing import Pool, cpu_count
-from tqdm import tqdm # type: ignore
+import tempfile
+
+app = FastAPI()
+#---------------------cors middleware-----------------------------
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:5500"],  # change ["*"] to your frontend URL for production (e.g., ["https://your-frontend.com"])
+    allow_credentials=True,
+    allow_methods=["POST"],  # allow all HTTP methods (GET, POST, etc.)
+    allow_headers=["*"],  # allow all headers
+)
+
+# -------------------- Load Dataset and Models --------------------
+df = pd.read_csv("dataset/final_data.csv")  # original dataset with song info
+
+# scaler + PCA
+with open("models/scaler_pca.pkl", "rb") as f:
+    scaler_pca = pickle.load(f)
+scaler = scaler_pca["scaler"]
+pca = scaler_pca["pca"]
+
+# KMeans
+with open("models/kmeans.pkl", "rb") as f:
+    kmeans = pickle.load(f)
+
+# KNN models per cluster
+with open("models/knn.pkl", "rb") as f:
+    knn = pickle.load(f)  # dict {cluster: KNN_model}
 
 
+# -------------------- Pydantic Validation --------------------
+class AudioValidator(BaseModel):
+    filename: str
+    content_type: str
+
+    @validator("filename")
+    def check_extension(cls, v):
+        if not v.lower().endswith((".mp3", ".wav")):
+            raise ValueError("Only .mp3 and .wav files are allowed.")
+        return v
+
+    @validator("content_type")
+    def check_content_type(cls, v):
+        if v not in ["audio/mpeg", "audio/wav"]:
+            raise ValueError("Invalid file type.")
+        return v
+
+
+# -------------------- Feature Extraction --------------------
 def extract_features(file_path):
+    y, sr = librosa.load(file_path, sr=None)
+    y, _ = librosa.effects.trim(y)
+
+    # MFCC
+    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+    mfcc_mean, mfcc_std = np.mean(mfcc, axis=1), np.std(mfcc, axis=1)
+
+    # Chroma
+    chroma = librosa.feature.chroma_stft(y=y, sr=sr)
+    chroma_mean, chroma_std = np.mean(chroma, axis=1), np.std(chroma, axis=1)
+
+    # Spectral Contrast
+    contrast = librosa.feature.spectral_contrast(y=y, sr=sr)
+    contrast_mean, contrast_std = np.mean(contrast, axis=1), np.std(contrast, axis=1)
+
+    # Tonnetz
+    tonnetz = librosa.feature.tonnetz(y=librosa.effects.harmonic(y), sr=sr)
+    tonnetz_mean, tonnetz_std = np.mean(tonnetz, axis=1), np.std(tonnetz, axis=1)
+
+    # Spectral Centroid
+    centroid = librosa.feature.spectral_centroid(y=y, sr=sr)
+    centroid_mean, centroid_std = np.mean(centroid), np.std(centroid)
+
+    # Zero Crossing Rate
+    zcr = librosa.feature.zero_crossing_rate(y)
+    zcr_mean, zcr_std = np.mean(zcr), np.std(zcr)
+
+    # Combine all features
+    feature_vector = np.hstack([
+        mfcc_mean, mfcc_std,
+        chroma_mean, chroma_std,
+        contrast_mean, contrast_std,
+        tonnetz_mean, tonnetz_std,
+        [centroid_mean, centroid_std, zcr_mean, zcr_std]
+    ])
+    return feature_vector
+
+
+# -------------------- Predict Endpoint --------------------
+@app.post("/predict")
+async def recommend_song(file: UploadFile = File(...)):
+    # Step 1: Validate file
     try:
-        y, sr = librosa.load(file_path)  
+        validator = AudioValidator(filename=file.filename, content_type=file.content_type)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-        #MFCC
-        mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
-        mfcc_mean = np.mean(mfcc, axis=1)
+    # Step 2: Save file temporarily
+    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as tmp:
+        tmp.write(await file.read())
+        tmp_path = tmp.name
 
-        #Chroma
-        chroma = librosa.feature.chroma_stft(y=y, sr=sr)
-        chroma_mean = np.mean(chroma, axis=1)
+    try:
+        # Step 3: Extract features
+        features = extract_features(tmp_path).reshape(1, -1)  # 2D array for sklearn
 
-        #Spectral Contrast
-        contrast = librosa.feature.spectral_contrast(y=y, sr=sr)
-        contrast_mean = np.mean(contrast, axis=1)
+        # Step 4: Scale + PCA
+        features_scaled = scaler.transform(features)
+        features_pca = pca.transform(features_scaled)
 
-        #Spectral Centroid
-        centroid = librosa.feature.spectral_centroid(y=y, sr=sr)
-        centroid_mean = np.mean(centroid, axis=1)
+        # Step 5: Predict cluster
+        cluster = int(kmeans.predict(features_pca))
 
-        #Tempo
-        tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+        # Step 6: KNN recommendation
+        if cluster not in knn:
+            raise HTTPException(status_code=404, detail=f"No KNN model found for cluster {cluster}")
 
-        # Combine all features
-        features = np.hstack([
-            mfcc_mean,
-            chroma_mean,
-            contrast_mean,
-            centroid_mean,
-            tempo
-        ])
+        model = knn[cluster]
+        neighbors_idx = model.kneighbors(features_pca, n_neighbors=5, return_distance=False)
 
-        return features
+        # Step 7: Map neighbor indices to actual song names
+        df_cluster = df[df['cluster'] == cluster].reset_index()
+        recommended_songs = df_cluster.iloc[neighbors_idx[0]]['filename'].tolist()  # replace 'song_name' with your column
+
+        return {
+            "cluster": cluster,
+            "recommended_songs": recommended_songs
+        }
 
     except Exception as e:
-        print(f"Error processing {file_path}:{e}")
-        return np.zeros(34)  # placeholder for failed files
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
-
-if __name__ == "__main__":
-    path = r"D:\recomdn_engine\Data\genres_original\*\*.wav"
-    files = glob(path)
-
-    # Multiprocessing setup
-    num_cores = cpu_count() - 2  # keep 2 cores free
-    print(f"Using {num_cores} CPU cores for parallel processing...")
-
-    # Run multiprocessing with progress bar
-    with Pool(num_cores) as p:
-        results = list(tqdm(p.imap(extract_features, files), total=len(files)))
-
-    # Convert to DataFrame
-    df = pd.DataFrame(results)
-    df['filename'] = [os.path.basename(f) for f in files]
-    df['genre'] = [os.path.basename(os.path.dirname(f)) for f in files]
-
-    df.drop(index=554,inplace=True)
-
-    # Save to CSV
-    df.to_csv("audio_features.csv", index=False)
-    print("Feature extraction complete! Saved to 'audio_features.csv'")
+    finally:
+        # Step 8: Cleanup temp file
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
