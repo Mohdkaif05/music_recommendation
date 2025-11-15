@@ -1,5 +1,5 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException  #type: ignore
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware  #type: ignore
 from pydantic import BaseModel, validator  #type: ignore
 import numpy as np   #type: ignore
 import pandas as pd  #type: ignore

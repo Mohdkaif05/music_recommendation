@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎶 Music Recommender</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Add a small style for audio player display */
+        .audio-player-container {
+            margin-top: 15px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        .rec-item-controls {
+            display: flex;
+            align-items: center;
+        }
+        .rec-item-controls audio {
+            width: 150px; /* Make recommended song player smaller */
+            height: 30px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🎵 Music Recommendation System</h1>
+        <p>Upload an audio file (MP3 or WAV) and get 5 similar tracks.</p>
+    </header>
+
+    <main>
+        <div class="input-section">
+            <label for="audioFile">Select your music:</label>
+            <input type="file" id="audioFile" accept=".mp3,.wav">
+            <button id="recommendBtn">Get Recommendations</button>
+
+            <div id="uploadedSongContainer" class="audio-player-container" style="display:none;">
+                <strong>Now Playing: <span id="uploadedSongName"></span></strong>
+                <audio id="uploadedAudioPlayer" controls></audio>
+            </div>
+        </div>
+
+        <div class="result-section">
+            <h2>Recommendations</h2>
+            <ul id="recommendationList">
+                <li class="placeholder">Upload a song and click "Get Recommendations" to start.</li>
+            </ul>
+        </div>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>
+
+
