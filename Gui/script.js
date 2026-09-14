@@ -5,7 +5,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const uploadedAudioPlayer = document.getElementById('uploadedAudioPlayer');
     const uploadedSongContainer = document.getElementById('uploadedSongContainer');
     const uploadedSongName = document.getElementById('uploadedSongName');
-    const apiurl = "http://127.0.0.1:8000/predict";
+    const apiurl = window.API_URL || 'http://127.0.0.1:8000/predict';
+    const audioBaseUrl = 'https://satvat.pro/kaif-audio/';
+
+    function metadataLabel(metadata) {
+        const fields = [
+            ['title', 'Title'],
+            ['artist', 'Artist'],
+            ['album', 'Album'],
+            ['genre', 'Genre'],
+            ['year', 'Year']
+        ];
+        return fields
+            .filter(([key]) => metadata && metadata[key] !== undefined && metadata[key] !== '')
+            .map(([key, label]) => `${label}: ${metadata[key]}`)
+            .join(' | ');
+    }
 
     // 1. Handle uploaded song playback
     audioInput.addEventListener('change', () => {
@@ -43,11 +58,18 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(apiurl, {
                 method: 'POST',
                 body: formData,
-                credentials: "include", // ✅ Send cookies / credentials with request
             });
 
             if (!response.ok) {
-                throw new Error(`Server error: ${response.status}`);
+                const responseBody = await response.text();
+                let detail = responseBody;
+                try {
+                    const errorData = JSON.parse(responseBody);
+                    detail = errorData.detail ? `: ${errorData.detail}` : '';
+                } catch {
+                    // Keep the plain-text response when the server did not return JSON.
+                }
+                throw new Error(`Server error: ${response.status}${detail ? ` - ${detail}` : ''}`);
             }
 
             const data = await response.json();
@@ -56,7 +78,27 @@ document.addEventListener('DOMContentLoaded', () => {
             list.innerHTML = ''; // Clear loading
             data.recommended_songs.forEach((song, index) => {
                 const li = document.createElement('li');
-                li.textContent = `${index + 1}. ${song}`;
+                const label = document.createElement('span');
+                const metadata = metadataLabel(song.metadata);
+                label.textContent = `${index + 1}. ${song.filename}${metadata ? ` (${metadata})` : ''}`;
+
+                const player = document.createElement('audio');
+                console.log(song)
+                player.controls = true;
+                player.preload = 'none';
+                const metadataUrl = song.metadata && song.metadata.url;
+                const relativeSongUrl = String(metadataUrl || song.url || '').replace(/^\/+/, '');
+                player.src = /^https?:\/\//i.test(relativeSongUrl)
+                    ? relativeSongUrl
+                    : `${audioBaseUrl}${relativeSongUrl}`;
+                const extension = song.filename.toLowerCase().split('.').pop();
+                player.setAttribute('type', extension === 'mp3' ? 'audio/mpeg' : 'audio/wav');
+                player.setAttribute('aria-label', `Play ${song.filename}`);
+                player.addEventListener('error', () => {
+                    label.textContent = `${index + 1}. ${song.filename} (audio unavailable)`;
+                });
+
+                li.append(label, player);
                 list.appendChild(li);
             });
         } catch (error) {

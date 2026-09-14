@@ -7,14 +7,76 @@ import librosa   #type: ignore
 import pickle
 import os
 import tempfile
+import json
+from urllib.request import urlopen
+from urllib.parse import quote
 
 app = FastAPI()
+audio_base_url = os.getenv("AUDIO_BASE_URL", "https://satvat.pro/kaif-audio/songs").rstrip("/")
+audio_index_url = os.getenv("AUDIO_INDEX_URL", f"{audio_base_url}/index.json")
+audio_include_genre = os.getenv("AUDIO_INCLUDE_GENRE", "false").lower() == "true"
+audio_metadata_cache = None
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", "*").split(",")
+    if origin.strip()
+]
+
+
+def build_audio_url(genre, filename):
+    """Build a public URL matching the hosted audio folder structure."""
+    genre_path = f"/{quote(str(genre), safe='')}" if audio_include_genre else ""
+    return f"{audio_base_url}{genre_path}/{quote(str(filename), safe='')}"
+
+
+def load_audio_metadata():
+    """Load index.json as a filename-to-metadata map without blocking recommendations on it."""
+    global audio_metadata_cache
+    if audio_metadata_cache is not None:
+        return audio_metadata_cache
+
+    audio_metadata_cache = {}
+    try:
+        with urlopen(audio_index_url, timeout=5) as response:
+            payload = json.load(response)
+
+        if isinstance(payload, dict):
+            entries = payload.get("songs", payload.get("files", payload))
+            if isinstance(entries, dict):
+                entries = [dict(value, filename=key) if isinstance(value, dict) else {"filename": key, "value": value}
+                           for key, value in entries.items()]
+        else:
+            entries = payload
+
+        for entry in entries if isinstance(entries, list) else []:
+            if not isinstance(entry, dict):
+                continue
+            filename = (
+                entry.get("filename")
+                or entry.get("file")
+                or entry.get("path")
+                or entry.get("name")
+            )
+            relative_url = entry.get("url") or entry.get("audio_url")
+            keys = []
+            if filename:
+                keys.append(os.path.basename(str(filename)))
+            if relative_url:
+                keys.append(os.path.basename(str(relative_url)))
+            for key in keys:
+                audio_metadata_cache[key] = entry
+    except Exception:
+        pass
+
+    return audio_metadata_cache
+
+
 #---------------------cors middleware-----------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5500"],  # change ["*"] to your frontend URL for production (e.g., ["https://your-frontend.com"])
-    allow_credentials=True,
-    allow_methods=["POST"],  # allow all HTTP methods (GET, POST, etc.)
+    allow_origins=cors_origins,
+    allow_credentials=False,
+    allow_methods=["*"] ,
     allow_headers=["*"],  # allow all headers
 )
 
@@ -124,17 +186,38 @@ async def recommend_song(file: UploadFile = File(...)):
             raise HTTPException(status_code=404, detail=f"No KNN model found for cluster {cluster}")
 
         model = knn[cluster]
-        neighbors_idx = model.kneighbors(features_pca, n_neighbors=5, return_distance=False)
-
-        # Step 7: Map neighbor indices to actual song names
+        # Ask for one extra result so the uploaded song can be excluded.
         df_cluster = df[df['cluster'] == cluster].reset_index()
-        recommended_songs = df_cluster.iloc[neighbors_idx[0]]['filename'].tolist()  # replace 'song_name' with your column
+        neighbor_count = min(6, len(df_cluster))
+        neighbors_idx = model.kneighbors(features_pca, n_neighbors=neighbor_count, return_distance=False)
+        uploaded_filename = os.path.basename(file.filename).lower()
+        recommended_indices = [
+            index for index in neighbors_idx[0]
+            if str(df_cluster.iloc[index]['filename']).lower() != uploaded_filename
+        ][:5]
+        recommended_rows = df_cluster.iloc[recommended_indices][['filename', 'genre']]
+        print(recommended_rows)
+        metadata_map = load_audio_metadata()
+        recommended_songs = [
+            {
+                "filename": row.filename,
+                "genre": row.genre,
+                # "url": metadata_audio_url(
+                #     metadata_map.get(str(row.filename), {}), row.genre, row.filename
+                # )
+                "url": f"{audio_base_url}/{row.genre}/{row.filename}",
+                "metadata": metadata_map.get(str(row.filename), {}),
+            }
+            for row in recommended_rows.itertuples(index=False)
+        ]
 
         return {
             "cluster": cluster,
             "recommended_songs": recommended_songs
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
@@ -142,4 +225,3 @@ async def recommend_song(file: UploadFile = File(...)):
         # Step 8: Cleanup temp file
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
-

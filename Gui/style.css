@@ -85,6 +85,13 @@ main {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 15px;
+}
+
+#recommendationList li audio {
+    width: 180px;
+    min-width: 180px;
+    height: 32px;
 }
 
 .placeholder {
@@ -93,4 +100,15 @@ main {
     font-style: italic;
     background-color: transparent !important;
     border-bottom: none !important;
+}
+
+@media (max-width: 600px) {
+    #recommendationList li {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    #recommendationList li audio {
+        width: 100%;
+    }
 }
