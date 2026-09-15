@@ -1,19 +1,24 @@
 <h1>Music Recommendation System </h1><br>
 This project builds a music recommendation system that analyzes and compares songs based on their audio features. Using Librosa, it extracts features such as MFCCs, chroma, and spectral contrast from audio files. These features are stored in a dataset and used to recommend similar tracks. The system helps users discover new music based on sound similarity rather than just metadata.
 
-<h2>Railway Deployment</h2>
+<h2>Live Deployment</h2>
 
-This app is configured for Railway-style deployment with the app entrypoint defined in <code>main.py</code>. The server listens on the <code>PORT</code> environment variable provided by Railway.
+<ul>
+<li><strong>Frontend:</strong> <a href="https://music-recommendation-frontend-beyx.onrender.com/">https://music-recommendation-frontend-beyx.onrender.com/</a></li>
+<li><strong>Backend API:</strong> <a href="https://music-recommendation-frontend.onrender.com">https://music-recommendation-frontend.onrender.com</a></li>
+</ul>
 
-Recommended startup command:
+The backend is a FastAPI app defined in <code>main.py</code>. The frontend is a static site located in the <code>Gui</code> folder and is configured to call the live backend endpoint at <code>https://music-recommendation-frontend.onrender.com/predict</code>.
+
+Recommended backend startup command:
 <pre>uvicorn main:app --host 0.0.0.0 --port $PORT</pre>
 
-Set the following environment variables in Railway:
+Set the following environment variables in Render for the backend:
 <ul>
 <li><code>AUDIO_BASE_URL</code>: public audio folder URL</li>
 <li><code>AUDIO_INDEX_URL</code>: optional metadata JSON URL</li>
 <li><code>AUDIO_INCLUDE_GENRE</code>: set to <code>true</code> if audio files are under genre subfolders</li>
-<li><code>CORS_ORIGINS</code>: your frontend URL, for example <code>https://your-app.up.railway.app</code></li>
+<li><code>CORS_ORIGINS</code>: your frontend URL, for example <code>https://music-recommendation-frontend-beyx.onrender.com</code></li>
 </ul>
 
 <h2>Deployment</h2>
@@ -39,12 +44,13 @@ Optional environment variables:
 <li><code>CORS_ORIGINS=https://your-frontend.example</code>: comma-separated frontend origins. The default is <code>*</code> because the public API does not use cookies.</li>
 </ul>
 
-For local testing, the frontend uses <code>http://127.0.0.1:8000/predict</code>. For deployment, add this before loading <code>Gui/script.js</code>, replacing the value with the real FastAPI URL:
+For local testing, the frontend uses <code>http://127.0.0.1:8000/predict</code>. For deployment, the frontend is configured with the live backend URL:
 
-<pre>&lt;script&gt;window.API_URL = "https://your-api-domain.example/predict";&lt;/script&gt;
+<pre>&lt;script&gt;window.API_URL = "https://music-recommendation-frontend.onrender.com/predict";&lt;/script&gt;
 &lt;script src="script.js"&gt;&lt;/script&gt;</pre>
 
-Do not use the frontend static-server URL for <code>API_URL</code>; that causes the “File does not reside within a trusted folder” 403 error.
+The frontend must not use its own URL as <code>API_URL</code>. The browser sends the uploaded file to the backend API endpoint, not to the static-site URL.
+
 <h2>Explanation of Each Feature</h2>
 
 <h3>MFCC (Mel-Frequency Cepstral Coefficients)</h3>
