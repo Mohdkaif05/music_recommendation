@@ -8,10 +8,19 @@ import pickle
 import os
 import tempfile
 import json
+from pathlib import Path
 from urllib.request import urlopen
 from urllib.parse import quote
 
-app = FastAPI()
+BASE_DIR = Path(__file__).resolve().parent
+PORT = int(os.getenv("PORT", "8000"))
+
+app = FastAPI(title="Music Recommendation API")
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
 audio_base_url = os.getenv("AUDIO_BASE_URL", "https://satvat.pro/kaif-audio/songs").rstrip("/")
 audio_index_url = os.getenv("AUDIO_INDEX_URL", f"{audio_base_url}/index.json")
 audio_include_genre = os.getenv("AUDIO_INCLUDE_GENRE", "false").lower() == "true"
@@ -81,20 +90,20 @@ app.add_middleware(
 )
 
 # -------------------- Load Dataset and Models --------------------
-df = pd.read_csv("dataset/final_data.csv")  # original dataset with song info
+df = pd.read_csv(BASE_DIR / "dataset" / "final_data.csv")  # original dataset with song info
 
 # scaler + PCA
-with open("models/scaler_pca.pkl", "rb") as f:
+with open(BASE_DIR / "models" / "scaler_pca.pkl", "rb") as f:
     scaler_pca = pickle.load(f)
 scaler = scaler_pca["scaler"]
 pca = scaler_pca["pca"]
 
 # KMeans
-with open("models/kmeans.pkl", "rb") as f:
+with open(BASE_DIR / "models" / "kmeans.pkl", "rb") as f:
     kmeans = pickle.load(f)
 
 # KNN models per cluster
-with open("models/knn.pkl", "rb") as f:
+with open(BASE_DIR / "models" / "knn.pkl", "rb") as f:
     knn = pickle.load(f)  # dict {cluster: KNN_model}
 
 
@@ -225,3 +234,8 @@ async def recommend_song(file: UploadFile = File(...)):
         # Step 8: Cleanup temp file
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=PORT)

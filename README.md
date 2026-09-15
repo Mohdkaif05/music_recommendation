@@ -1,6 +1,21 @@
 <h1>Music Recommendation System </h1><br>
 This project builds a music recommendation system that analyzes and compares songs based on their audio features. Using Librosa, it extracts features such as MFCCs, chroma, and spectral contrast from audio files. These features are stored in a dataset and used to recommend similar tracks. The system helps users discover new music based on sound similarity rather than just metadata.
 
+<h2>Railway Deployment</h2>
+
+This app is configured for Railway-style deployment with the app entrypoint defined in <code>main.py</code>. The server listens on the <code>PORT</code> environment variable provided by Railway.
+
+Recommended startup command:
+<pre>uvicorn main:app --host 0.0.0.0 --port $PORT</pre>
+
+Set the following environment variables in Railway:
+<ul>
+<li><code>AUDIO_BASE_URL</code>: public audio folder URL</li>
+<li><code>AUDIO_INDEX_URL</code>: optional metadata JSON URL</li>
+<li><code>AUDIO_INCLUDE_GENRE</code>: set to <code>true</code> if audio files are under genre subfolders</li>
+<li><code>CORS_ORIGINS</code>: your frontend URL, for example <code>https://your-app.up.railway.app</code></li>
+</ul>
+
 <h2>Deployment</h2>
 
 The API returns a playable URL for every recommendation. The current <code>index.json</code> stores audio files at:

@@ -1,4 +1,11 @@
-librosa
+fastapi
+uvicorn[standard]
+pydantic
 numpy
 pandas
+librosa
+scikit-learn
 tqdm
+python-multipart
+joblib
+

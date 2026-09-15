@@ -1,2 +1,11 @@
-test.ipynb
+# Dataset
 Data/
+Data.7z
+
+# Python generated files
+__pycache__/
+*.pyc
+
+# Jupyter
+test.ipynb
+
