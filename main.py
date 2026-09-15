@@ -188,7 +188,10 @@ async def recommend_song(file: UploadFile = File(...)):
         features_pca = pca.transform(features_scaled)
 
         # Step 5: Predict cluster
-        cluster = int(kmeans.predict(features_pca))
+        cluster_pred = np.asarray(kmeans.predict(features_pca)).ravel()
+        if cluster_pred.size == 0:
+            raise HTTPException(status_code=500, detail="Prediction returned no cluster label.")
+        cluster = int(cluster_pred[0])
 
         # Step 6: KNN recommendation
         if cluster not in knn:
