@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const uploadedAudioPlayer = document.getElementById('uploadedAudioPlayer');
     const uploadedSongContainer = document.getElementById('uploadedSongContainer');
     const uploadedSongName = document.getElementById('uploadedSongName');
+
     const apiurl = window.API_URL || 'http://127.0.0.1:8000/predict';
     const audioBaseUrl = 'https://satvat.pro/kaif-audio/';
 
@@ -21,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .map(([key, label]) => `${label}: ${metadata[key]}`)
             .join(' | ');
     }
+
 
     // 1. Handle uploaded song playback
     audioInput.addEventListener('change', () => {
